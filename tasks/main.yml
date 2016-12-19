@@ -1,2 +1,56 @@
 ---
-# tasks file for orhan89.cvechecker
+- name: Install dependencies
+  apt:
+    name: "{{item}}"
+    state: present
+  with_items:
+    - libconfig8-dev
+    - libsqlite3-dev
+    - libxslt1-dev
+    - xsltproc
+- name: Download and unarchive cvechecker source
+  unarchive:
+    src : https://raw.githubusercontent.com/wiki/sjvermeu/cvechecker/releases/cvechecker-3.6.tar.gz
+    dest : /tmp
+    remote_src : yes
+- name: apply patch to pullcves
+  patch:
+    src="files/pullcves.patch"
+    dest="/tmp/cvechecker-3.6/scripts/pullcves"
+- name: Configure Makefile
+  command: ./configure --enable-sqlite3
+  args:
+    chdir: "/tmp/cvechecker-3.6"
+- name: Build cvechecker
+  make:
+    chdir: "/tmp/cvechecker-3.6"
+- name: Install cvechecker
+  make:
+    chdir: "/tmp/cvechecker-3.6"
+    target: install
+  become: yes
+- name: Post-install
+  make:
+    chdir: "/tmp/cvechecker-3.6"
+    target: postinstall
+  become: yes
+- name: Initialize Database
+  command: /usr/local/bin/cvechecker -i
+  become: yes
+- name: Load CVE
+  shell: /usr/local/bin/pullcves pull
+  become: yes    
+- name: Generate files list
+  shell: "find / -type f -perm -o+x | /usr/local/bin/cvechecker -b -" 
+  become: yes
+- name: Generate files list
+  command: "echo \"/proc/version\" | /usr/local/bin/cvechecker -b -"
+  become: yes
+- name: Creates report directory
+  file: path=/usr/local/share/cvecheck state=directory
+- name: Copy acknowledgements.xml file
+  copy:
+    src: "files/acknowledgements.xml"
+    dest: "/usr/local/share/cvechecker/acknowledgements.xml"
+- name: Run Check
+  command: "cvereport -d /tmp/cvereport/ /usr/local/share/cvechecker/acknowledgements.xml"
